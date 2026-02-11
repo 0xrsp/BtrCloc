@@ -1,10 +1,12 @@
 #pragma once
 
+#define _CRT_SECURE_NO_WARNINGS
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <vector>
-#include <unordered_map>
-#include <unordered_set> 
+#include <assert.h>
 
 typedef char s8;
 typedef short s16;
