@@ -19,19 +19,10 @@ struct File_Result {
 };
 
 struct Job_Data {
-  s8* data;
-  s32 size;
+  s8* filename;
   Enum_File_Type type;
   File_Result result;
-
-  //cleanup
   win32_Job wjob;
-  bool8 mmap_file;
-  union {
-    win32_Mapped_File mapped;
-    FILE* pfile;
-  };
-  std::vector<s8> cleanup_vec;
 };
 
 //data
@@ -81,7 +72,7 @@ static Enum_File_Type MapExtToFileType(const s8* ext) {
 
 static const s8* FileTypeToStr(Enum_File_Type file_type) {
   switch (file_type) {
-  case FILETYPE_UNKNOWN:
+  default:
     return "Unknown";
   case FILETYPE_H_HEADER:
     return "C/C++ Header";
@@ -93,16 +84,23 @@ static const s8* FileTypeToStr(Enum_File_Type file_type) {
     return "C++";
   case FILETYPE_JAVA:
     return "Java";
-  default:
-    assert(0);
   }
 }
 
-static void FileWorker_real(Job_Data* job) {
+static void FileWorker(TP_CALLBACK_INSTANCE* tp, void* userdata, TP_WORK* work) {
+  UNUSED_PARAM(tp);
+  UNUSED_PARAM(work);
+  Job_Data* job = (Job_Data*)userdata;
+
+  win32_Mapped_File file{};
+  if (!win32_MapFileForRead(job->filename, &file)) {
+    return;
+  }
+
   // TODO: Read lines
   s32 last_line = 0;
-  for (s32 i = 0; i < job->size; ++i) {
-    s8 c = job->data[i];
+  for (s32 i = 0; i < (s32)file.size; ++i) {
+    s8 c = file.view[i];
     if (c == '\r') continue;
     if (c == '\n') {
       job->result.code++;
@@ -112,22 +110,10 @@ static void FileWorker_real(Job_Data* job) {
   }
 
   //cleanup
-  if (job->mmap_file) {
-    win32_CloseMapped(&job->mapped);
-  }
-  else {
-    fclose(job->pfile);
-  }
+  win32_CloseMapped(&file);
 }
 
-static void FileWorker(TP_CALLBACK_INSTANCE* tp, void* userdata, TP_WORK* work) {
-  UNUSED_PARAM(tp);
-  UNUSED_PARAM(work);
-  Job_Data* in_out = (Job_Data*)userdata;
-  FileWorker_real(in_out);
-}
-
-static void SpawnJob_internal(const s8* filename, bool32 mmap_file = 1) {
+static void SpawnFileJob(const s8* filename) {
   const s8* ext = GetFileExt(filename);
   if (!ext) {
     return;
@@ -138,36 +124,7 @@ static void SpawnJob_internal(const s8* filename, bool32 mmap_file = 1) {
   }
 
   Job_Data* data = new Job_Data{};
-
-  if (mmap_file) {
-    win32_Mapped_File file{};
-    if (!win32_MapFileForRead(filename, &file)) {
-      SpawnJob_internal(filename, 0);//fallback to normal reading
-      return;
-    }
-    data->data = file.view;
-    data->size = file.size;
-    data->mmap_file = 1;
-    data->mapped = file;
-  }
-  else {
-    FILE* pfile = fopen(filename, "rb");
-    if (!pfile) {
-      printf("failed to read file: %s\n", filename);
-      return;
-    }
-    std::vector<s8> vec;
-    size_t read;
-    while ((read = fread(file_read_buf, 1, sizeof(file_read_buf), pfile)) > 0) {
-      vec.insert(vec.end(), file_read_buf, file_read_buf + read);
-    }
-
-    data->data = vec.data();
-    data->size = vec.size();
-    data->cleanup_vec = std::move(vec);
-    data->mmap_file = 0;
-    data->pfile = pfile;
-  }
+  data->filename = _strdup(filename);
   data->type = type;
 
   //printf("spawning task: %s\n", filename);
@@ -179,9 +136,6 @@ static void SpawnJob_internal(const s8* filename, bool32 mmap_file = 1) {
   else {
     delete data;
   }
-}
-static void SpawnFileJob(const s8* filename) {
-  SpawnJob_internal(filename);
 }
 
 static void MergeResult(File_Result* dest, File_Result x) {
@@ -200,16 +154,17 @@ s32 main(s32 argc, s8* argv[]) {
   win32_CreateThreadPool(&workers, args.threads);
   win32_WalkDirTree(args.directory, SpawnFileJob);
 
-  File_Result results[FILETYPES_COUNT];
-  memset(results, 0, sizeof(results));
+  File_Result results[FILETYPES_COUNT] = { };
 
   for (Job_Data* job : jobs) {
     win32_WaitJob(job->wjob);
     job->wjob = nullptr;
   }
 
+  win32_CloseThreadPool(&workers);
+
   for (Job_Data* job : jobs) {
-    printf("type=%d code=%d\n", job->type, job->result.code);
+    //printf("type=%d code=%d\n", job->type, job->result.code);
     MergeResult(&results[job->type], job->result);
   }
 
