@@ -45,7 +45,7 @@ enum Enum_File_Type : s32 {
   FILETYPE_BAT,
   FILETYPE_POWERSHELL,
   FILETYPE_MARKDOWN,
-  FILETYPE_SH,
+  FILETYPE_BASH,
 
   FILETYPES_COUNT,
 };
@@ -59,12 +59,70 @@ enum Enum_File_Type : s32 {
   case t: \
     return (n)
 
+typedef bool(*Line_Proc)(std::string_view);
+
+#include "lineprocs.cpp"
+
+static Line_Proc LookupLineProc(Enum_File_Type filetype) {
+  switch (filetype) {
+  case FILETYPE_H_HEADER:
+  case FILETYPE_HPP_HEADER:
+  case FILETYPE_C_SRC:
+  case FILETYPE_CXX_SRC:
+  case FILETYPE_JAVA:
+  case FILETYPE_CSHARP:
+    return CstyleLineProc;
+    /*
+      FILETYPE_XML,
+  FILETYPE_JSON,
+  FILETYPE_TOML,
+  FILETYPE_YAML,
+  FILETYPE_PROPERTIES,
+  FILETYPE_INI,
+
+  //c
+  FILETYPE_ASM,
+
+  //random langs
+  FILETYPE_PYTHON,
+  FILETYPE_PHP,
+  FILETYPE_GOLANG,
+  FILETYPE_RUST,
+  FILETYPE_RUBY,
+  FILETYPE_ZIG,
+  FILETYPE_SWIFT,
+  FILETYPE_GRADLE,
+  FILETYPE_KOTLIN,
+  FILETYPE_HASKELL,
+  FILETYPE_JULIA,
+
+  //web stuff
+  FILETYPE_JAVASCRIPT,
+  FILETYPE_TYPESCRIPT,
+  FILETYPE_HTML,
+  FILETYPE_CSS,
+  FILETYPE_VUE,
+  FILETYPE_SVELTE,
+
+  //other
+  FILETYPE_BAT,
+  FILETYPE_POWERSHELL,
+  FILETYPE_MARKDOWN,
+  FILETYPE_BASH,
+
+*/
+
+  default:
+    return nullptr;
+
+  }
+}
 
 static Enum_File_Type MapExtToFileType(const s8* ext) {
   if (strcmp(ext, "c") == 0) {
     return FILETYPE_C_SRC;
   }
-// TODO: this should be some kind of hashtable
+  // TODO: this should be some kind of hashtable
   FILETYPE_EXT_MACRO(ext, "xml", FILETYPE_XML)
     FILETYPE_EXT_MACRO(ext, "json", FILETYPE_JSON)
     FILETYPE_EXT_MACRO(ext, "toml", FILETYPE_TOML)
@@ -113,7 +171,8 @@ static Enum_File_Type MapExtToFileType(const s8* ext) {
     FILETYPE_EXT_MACRO(ext, "bat", FILETYPE_BAT)
     FILETYPE_EXT_MACRO(ext, "ps1", FILETYPE_POWERSHELL)
     FILETYPE_EXT_MACRO(ext, "md", FILETYPE_MARKDOWN)
-    FILETYPE_EXT_MACRO(ext, "sh", FILETYPE_SH)
+    FILETYPE_EXT_MACRO(ext, "sh", FILETYPE_BASH)
+    FILETYPE_EXT_MACRO(ext, "bash", FILETYPE_BASH)
   else {
     return FILETYPE_UNKNOWN;
   }
@@ -156,7 +215,7 @@ static const s8* FileTypeToStr(Enum_File_Type file_type) {
     FILETYPE_NAME_MACRO(FILETYPE_BAT, "Batch");
     FILETYPE_NAME_MACRO(FILETYPE_POWERSHELL, "PowerShell");
     FILETYPE_NAME_MACRO(FILETYPE_MARKDOWN, "Markdown");
-    FILETYPE_NAME_MACRO(FILETYPE_SH, "Shell");
+    FILETYPE_NAME_MACRO(FILETYPE_BASH, "Bash");
   default:
     return "Unknown";
   }
@@ -211,22 +270,53 @@ static const s8* GetFileExt(const s8* filename) {
   return nullptr;
 }
 
+static bool IsWhitespace(s8 c) {
+  return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v';
+}
+
+static bool IsLineBlank(std::string_view line) {
+  for (s8 c : line) {
+    if (!IsWhitespace(c)) {
+      return 0;
+    }
+  }
+  return 1;
+}
+
 static void FileWorker(Job_Data* job) {
   win32_Mapped_File file{};
   if (!win32_MapFileForRead(job->filename, &file)) {
     return;
   }
 
-  s32 last_line = 0;
-  for (s32 i = 0; i < (s32)file.size; ++i) {
+  // TODO: File is memory mapped there is no 
+  // text decoding done
+
+  size_t last_line = 0;
+  for (size_t i = 1; i < file.size; ++i) {
     s8 c = file.view[i];
-    if (c == '\r') continue;
-    if (c == '\n') {
-      job->result.code++;
-      // TODO: Check if line was only whitespace or all comment
+    if (//file.view[i - 1] == '\r' &&
+      c == '\n') {
+      std::string_view line{ file.view + last_line, i - last_line };
+      //printf("Line: %.*s\n", SV_PRINTF_ARG(line));
+      if (IsLineBlank(line)) {
+        job->result.blank++;
+      }
+      else {
+        Line_Proc lp = LookupLineProc(job->type);
+        if (lp && lp(line))
+        {
+          job->result.comment++;
+        }
+        else {
+          job->result.code++;
+        }
+      }
       last_line = i + 1;
     }
   }
+
+  LineProcEofCb();
 
   win32_CloseMapped(&file);
 }
@@ -287,15 +377,19 @@ s32 main(s32 argc, s8* argv[]) {
 
   // TODO: Cleanup printing logic
   printf("Type\t\tCode\tBlank\tComment\n");
+  File_Result sum{};
   for (s32 typei = FILETYPE_UNKNOWN + 1; typei < FILETYPES_COUNT; ++typei) {
     File_Result result = results[typei];
     if (result.blank + result.code + result.comment > 0) {
+      MergeResult(&sum, result);
       Enum_File_Type type = (Enum_File_Type)typei;
       const s8* str = FileTypeToStr(type);
       s32 tabs = 16 - strlen(str);
       printf("%s%*s%d\t%d\t%d\n", str, tabs, "", result.code, result.blank, result.comment);
     }
   }
+  printf("---------------------------------------\n");
+  printf("SUM\t\t%d\t%d\t%d", sum.code, sum.blank, sum.comment);
 
   return 0;
 }

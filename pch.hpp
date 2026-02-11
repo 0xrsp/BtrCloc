@@ -8,6 +8,7 @@
 #include <vector>
 #include <assert.h>
 #include <thread>
+#include <string_view>
 
 typedef char s8;
 typedef short s16;
@@ -28,3 +29,4 @@ typedef s8 bool8;
 #define ArrayCount(a) (sizeof(a) / sizeof(a[0]))
 #define UNUSED_PARAM(x) (void)x
 #define ASSERT_NOT_IMPL assert(0 && "This function has not been implemented")
+#define SV_PRINTF_ARG(sv) (s32)(sv).size(),(sv).data()
