@@ -7,6 +7,7 @@
 #include <stdlib.h>
 #include <vector>
 #include <assert.h>
+#include <thread>
 
 typedef char s8;
 typedef short s16;

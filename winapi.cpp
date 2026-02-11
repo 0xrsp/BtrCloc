@@ -1,34 +1,6 @@
 #include "winapi.hpp"
 
-win32_Job win32_SubmitJob(win32_Thread_Pool* tp, PTP_WORK_CALLBACK work_cb, void* userdata) {
-  TP_WORK* work = CreateThreadpoolWork(work_cb, userdata, &tp->env);
-  if (work) {
-    SubmitThreadpoolWork(work);
-  }
-  return work;
-}
-
-void win32_WaitJob(win32_Job& job) {
-  if (job) {
-    WaitForThreadpoolWorkCallbacks(job, 0);
-    CloseThreadpoolWork(job);
-    job = nullptr;
-  }
-}
-
-bool32 win32_CreateThreadPool(win32_Thread_Pool* tp, s32 threads) {
-  InitializeThreadpoolEnvironment(&tp->env);
-  tp->pool = CreateThreadpool(nullptr);
-  SetThreadpoolThreadMinimum(tp->pool, threads);
-  SetThreadpoolThreadMaximum(tp->pool, threads);
-  SetThreadpoolCallbackPool(&tp->env, tp->pool);
-  return 0;
-}
-
-void win32_CloseThreadPool(win32_Thread_Pool* tp) {
-  DestroyThreadpoolEnvironment(&tp->env);
-  CloseThreadpool(tp->pool);
-}
+static u64 clock_freq;
 
 bool32 win32_MapFileForRead(const s8* filename,
   win32_Mapped_File* out) {
@@ -91,8 +63,6 @@ void win32_WalkDirTree(const s8* dir, File_Cb cb) {
 
   FindClose(handle);
 }
-
-static u64 clock_freq;
 
 void InitHighResTimer() {
   QueryPerformanceFrequency((LARGE_INTEGER*)&clock_freq);
