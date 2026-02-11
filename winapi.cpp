@@ -1,6 +1,12 @@
 #include "winapi.hpp"
 
 static u64 clock_freq;
+static NtQueryDirectoryFile_t NtQueryDirectoryFile_imp;
+
+void win32_LoadImports() {
+  HMODULE ntdll = LoadLibraryW(L"ntdll.dll");
+  NtQueryDirectoryFile_imp = (NtQueryDirectoryFile_t)GetProcAddress(ntdll, "NtQueryDirectoryFile");
+}
 
 bool32 win32_MapFileForRead(const s8* filename,
   win32_Mapped_File* out) {
@@ -34,34 +40,62 @@ void win32_CloseMapped(const win32_Mapped_File* file) {
 }
 
 void win32_WalkDirTree(const s8* dir, File_Cb cb) {
-  // TODO: Use wchar_t
-  WIN32_FIND_DATAA fd;
+  s8 dir_info_buf[4 * 1024];//4kb
 
-  s8 search_filter[MAX_PATH];
-  sprintf(search_filter, "%s\\*", dir);
-  HANDLE handle = FindFirstFileA(search_filter, &fd);
-  if (handle == INVALID_HANDLE_VALUE) {
+  FILE_DIRECTORY_INFORMATION info{};
+  u32 entry_offset = 0x0;
+  HANDLE dhandle = CreateFileA(dir, FILE_LIST_DIRECTORY, FILE_SHARE_WRITE | FILE_SHARE_READ | FILE_SHARE_DELETE,
+    nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
+
+  if (dhandle == INVALID_HANDLE_VALUE) {
     return;
   }
+
+  IO_STATUS_BLOCK status;
+  NtQueryDirectoryFile_imp(dhandle, nullptr, nullptr, nullptr, &status, dir_info_buf, sizeof(dir_info_buf),
+    FileDirectoryInformation, 0, nullptr, 1);
+
+  if (!NT_SUCCESS(status.Status)) {
+    goto err_close;
+  }
+
   do {
-    if (strcmp(fd.cFileName, ".") == 0 ||
-      strcmp(fd.cFileName, "..") == 0) {
+    info = *(FILE_DIRECTORY_INFORMATION*)(dir_info_buf + entry_offset);
+    wchar_t* name_p = (wchar_t*)(dir_info_buf + entry_offset + offsetof(FILE_DIRECTORY_INFORMATION, name));
+    u32 wlength = info.name_length / 2;
+    entry_offset += info.next_entry_off;
+
+    if (entry_offset + sizeof(FILE_DIRECTORY_INFORMATION) > sizeof(dir_info_buf)) {
+      printf("directory too large to enumerate: %s\n", dir);
+      break;
+    }
+
+    if (
+      wcsncmp(name_p, L".", info.name_length) == 0 ||
+      wcsncmp(name_p, L"..", info.name_length) == 0
+      ) {
       continue;
     }
 
-    s8 full_path[MAX_PATH];
-    sprintf(full_path, "%s\\%s", dir, fd.cFileName);
+    //TODO: Utf-8 stuff here just assuming length is the same
+    //s32 length = WideCharToMultiByte(CP_ACP, 0, name_p, wlength, nullptr, 0, nullptr, nullptr);
+    s32 length = wlength;
 
-    if (fd.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) {
-      win32_WalkDirTree(full_path, cb);
+    s8* name = (s8*)malloc(length + 1);
+    length = WideCharToMultiByte(CP_ACP, 0, name_p, wlength, name, length, nullptr, nullptr);
+    name[length] = 0;
+    //printf("%s\n", name);
+
+    if (info.attribs & FILE_ATTRIBUTE_DIRECTORY) {
+      win32_WalkDirTree(name, cb);
     }
     else {
-      cb(full_path);
+      cb(name);
     }
+  } while (info.next_entry_off != 0);
 
-  } while (FindNextFileA(handle, &fd));
-
-  FindClose(handle);
+err_close:
+  CloseHandle(dhandle);
 }
 
 void InitHighResTimer() {

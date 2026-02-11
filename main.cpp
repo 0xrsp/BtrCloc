@@ -351,6 +351,7 @@ static void WorkerThread(Job_Span jobs) {
 
 s32 main(s32 argc, s8* argv[]) {
   InitHighResTimer();
+  win32_LoadImports();
 
   ParseArgs(&args, argc, argv);
   //NOTE: Debug arg
