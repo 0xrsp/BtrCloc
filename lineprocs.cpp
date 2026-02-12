@@ -72,6 +72,11 @@ static bool32 CstyleLineProc(std::string_view s) {
     if (s[i - 1] == '*' && s[i] == '/') {
       in_ml_comment = 0;
     }
+
+    // this is still required for str lit logic
+    if (s[i - 1] == '/' && s[i] == '/') {
+      sl_comm = 1;
+    }
   }
   bool32 comm = in_ml_comment || sl_comm;
   return comm;

@@ -112,7 +112,7 @@ static bool IsTableEntryEqual(u32 idx, const s8* ext) {
   return strncmp(filetype_table[idx].key, ext, MAX_EXT_LENGTH) == 0;
 }
 
-static void PutExtInTable(const s8* ext, Enum_File_Type filetype) {
+static void PutExtInTable_internal(const s8* ext, Enum_File_Type filetype) {
   u32 idx = ComputeExtIndex(ext);
   while (filetype_table[idx].value != FILETYPE_UNKNOWN) {
     if (IsTableEntryEqual(idx, ext)) {
@@ -125,6 +125,8 @@ static void PutExtInTable(const s8* ext, Enum_File_Type filetype) {
   strcpy(filetype_table[idx].key, ext);
   filetype_table[idx].value = filetype;
 }
+
+#define PutExtInTable(ext,filetype) PutExtInTable_internal(ext"\0\0\0",filetype)
 
 static Enum_File_Type LookupExtInTable(const s8* ext) {
   u32 idx = ComputeExtIndex(ext);
@@ -350,7 +352,7 @@ static void MergeResult(File_Result* dest, File_Result x) {
 }
 
 static bool32 IsResultPresent(File_Result result) {
-  return result.blank + result.files + result.comment + result.code > 0;
+  return result.blank + result.comment + result.code > 0;
 }
 
 static void WorkerThread(Job_Span jobs) {
