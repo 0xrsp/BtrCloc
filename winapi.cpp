@@ -82,12 +82,13 @@ void win32_WalkDirTree(const s8* dir, File_Cb cb) {
     //s32 length = WideCharToMultiByte(CP_ACP, 0, name_p, wlength, nullptr, 0, nullptr, nullptr);
     s32 length = wlength;
 
-    s8* filepath = (s8*)malloc(dir_length + 1 + length + 1);
+    s32 nullpad = 4;
+    s8* filepath = (s8*)malloc(dir_length + 1 + length + nullpad);
     filepath[0] = 0;
     strcat(filepath, dir);
     strcat(filepath, "\\");
     length = WideCharToMultiByte(CP_ACP, 0, name_p, wlength, filepath + dir_length + 1, MAX_PATH, nullptr, nullptr);
-    filepath[dir_length + 1 + length] = 0;
+    memset(filepath + dir_length + 1 + length, 0, nullpad);
 
     if (info.attribs & FILE_ATTRIBUTE_DIRECTORY) {
       win32_WalkDirTree(filepath, cb);

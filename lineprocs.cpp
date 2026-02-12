@@ -7,5 +7,6 @@ static void LineProcEofCb() {
 }
 
 static bool CstyleLineProc(std::string_view s) {
+  //TODO: C line proc
   return 0;
 }

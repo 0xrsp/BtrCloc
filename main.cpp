@@ -13,7 +13,6 @@ enum Enum_File_Type : s32 {
 
   //c
   FILETYPE_H_HEADER,
-  FILETYPE_HPP_HEADER,
   FILETYPE_C_SRC,
   FILETYPE_CXX_SRC,
   FILETYPE_ASM,
@@ -64,118 +63,120 @@ typedef bool(*Line_Proc)(std::string_view);
 #include "lineprocs.cpp"
 
 static Line_Proc LookupLineProc(Enum_File_Type filetype) {
+  //TODO: Add more line procs
   switch (filetype) {
   case FILETYPE_H_HEADER:
-  case FILETYPE_HPP_HEADER:
   case FILETYPE_C_SRC:
   case FILETYPE_CXX_SRC:
   case FILETYPE_JAVA:
   case FILETYPE_CSHARP:
     return CstyleLineProc;
-    /*
-      FILETYPE_XML,
-  FILETYPE_JSON,
-  FILETYPE_TOML,
-  FILETYPE_YAML,
-  FILETYPE_PROPERTIES,
-  FILETYPE_INI,
-
-  //c
-  FILETYPE_ASM,
-
-  //random langs
-  FILETYPE_PYTHON,
-  FILETYPE_PHP,
-  FILETYPE_GOLANG,
-  FILETYPE_RUST,
-  FILETYPE_RUBY,
-  FILETYPE_ZIG,
-  FILETYPE_SWIFT,
-  FILETYPE_GRADLE,
-  FILETYPE_KOTLIN,
-  FILETYPE_HASKELL,
-  FILETYPE_JULIA,
-
-  //web stuff
-  FILETYPE_JAVASCRIPT,
-  FILETYPE_TYPESCRIPT,
-  FILETYPE_HTML,
-  FILETYPE_CSS,
-  FILETYPE_VUE,
-  FILETYPE_SVELTE,
-
-  //other
-  FILETYPE_BAT,
-  FILETYPE_POWERSHELL,
-  FILETYPE_MARKDOWN,
-  FILETYPE_BASH,
-
-*/
-
   default:
     return nullptr;
-
   }
 }
 
-static Enum_File_Type MapExtToFileType(const s8* ext) {
-  if (strcmp(ext, "c") == 0) {
-    return FILETYPE_C_SRC;
+//NOTE: Increase this if longer exts are used
+#define MAX_EXT_LENGTH 12
+
+struct Table_Entry {
+  s8 key[MAX_EXT_LENGTH];
+  Enum_File_Type value;
+};
+
+//NOTE: Increase table size when more are added
+#define FILETYPE_TABLE_SIZE 256
+static Table_Entry filetype_table[FILETYPE_TABLE_SIZE];
+
+static u32 fmix32(u32 h)
+{
+  h ^= h >> 16;
+  h *= 0x85ebca6b;
+  h ^= h >> 13;
+  h *= 0xc2b2ae35;
+  h ^= h >> 16;
+  return h;
+}
+
+static u32 ComputeExtIndex(const s8* ext) {
+  u32 hash = (ext[0] |
+    (ext[1] << 8) |
+    (ext[2] << 16) |
+    (ext[3] << 24));
+  return fmix32(hash) % FILETYPE_TABLE_SIZE;
+}
+
+static void PutExtInTable(const s8* ext, Enum_File_Type filetype) {
+  u32 idx = ComputeExtIndex(ext);
+  while (filetype_table[idx].value != FILETYPE_UNKNOWN) {
+    if (strncmp(filetype_table[idx].key, ext, MAX_EXT_LENGTH) == 0) {
+      assert(0 && "Ext table already contains entry");
+      return;
+    }
+    idx = (idx + 1) % FILETYPE_TABLE_SIZE;
   }
-  // TODO: this should be some kind of hashtable
-  FILETYPE_EXT_MACRO(ext, "xml", FILETYPE_XML)
-    FILETYPE_EXT_MACRO(ext, "json", FILETYPE_JSON)
-    FILETYPE_EXT_MACRO(ext, "toml", FILETYPE_TOML)
-    FILETYPE_EXT_MACRO(ext, "yaml", FILETYPE_YAML)
-    FILETYPE_EXT_MACRO(ext, "yml", FILETYPE_YAML)
-    FILETYPE_EXT_MACRO(ext, "properties", FILETYPE_PROPERTIES)
-    FILETYPE_EXT_MACRO(ext, "ini", FILETYPE_INI)
 
-    FILETYPE_EXT_MACRO(ext, "cpp", FILETYPE_CXX_SRC)
-    FILETYPE_EXT_MACRO(ext, "cxx", FILETYPE_CXX_SRC)
-    FILETYPE_EXT_MACRO(ext, "c++", FILETYPE_CXX_SRC)
-    FILETYPE_EXT_MACRO(ext, "cc", FILETYPE_CXX_SRC)
-    FILETYPE_EXT_MACRO(ext, "hpp", FILETYPE_HPP_HEADER)
-    FILETYPE_EXT_MACRO(ext, "h", FILETYPE_H_HEADER)
-    FILETYPE_EXT_MACRO(ext, "s", FILETYPE_ASM)
-    FILETYPE_EXT_MACRO(ext, "asm", FILETYPE_ASM)
+  strcpy(filetype_table[idx].key, ext);
+  filetype_table[idx].value = filetype;
+}
 
-    FILETYPE_EXT_MACRO(ext, "py", FILETYPE_PYTHON)
-    FILETYPE_EXT_MACRO(ext, "pyi", FILETYPE_PYTHON)
-    FILETYPE_EXT_MACRO(ext, "cs", FILETYPE_CSHARP)
-    FILETYPE_EXT_MACRO(ext, "go", FILETYPE_GOLANG)
-    FILETYPE_EXT_MACRO(ext, "rs", FILETYPE_RUST)
-    FILETYPE_EXT_MACRO(ext, "rb", FILETYPE_RUBY)
-    FILETYPE_EXT_MACRO(ext, "zig", FILETYPE_ZIG)
-    FILETYPE_EXT_MACRO(ext, "swift", FILETYPE_SWIFT)
-    FILETYPE_EXT_MACRO(ext, "gradle", FILETYPE_GRADLE)
-    FILETYPE_EXT_MACRO(ext, "java", FILETYPE_JAVA)
-    FILETYPE_EXT_MACRO(ext, "kt", FILETYPE_KOTLIN)
-    FILETYPE_EXT_MACRO(ext, "kts", FILETYPE_KOTLIN)
-    FILETYPE_EXT_MACRO(ext, "hs", FILETYPE_HASKELL)
-    FILETYPE_EXT_MACRO(ext, "jl", FILETYPE_JULIA)
-
-    FILETYPE_EXT_MACRO(ext, "js", FILETYPE_JAVASCRIPT)
-    FILETYPE_EXT_MACRO(ext, "ts", FILETYPE_TYPESCRIPT)
-    FILETYPE_EXT_MACRO(ext, "jsx", FILETYPE_JAVASCRIPT)
-    FILETYPE_EXT_MACRO(ext, "tsx", FILETYPE_TYPESCRIPT)
-    FILETYPE_EXT_MACRO(ext, "html", FILETYPE_HTML)
-    FILETYPE_EXT_MACRO(ext, "hbs", FILETYPE_HTML)
-    FILETYPE_EXT_MACRO(ext, "css", FILETYPE_CSS)
-    FILETYPE_EXT_MACRO(ext, "scss", FILETYPE_CSS)
-    FILETYPE_EXT_MACRO(ext, "sass", FILETYPE_CSS)
-    FILETYPE_EXT_MACRO(ext, "less", FILETYPE_CSS)
-    FILETYPE_EXT_MACRO(ext, "svelte", FILETYPE_SVELTE)
-    FILETYPE_EXT_MACRO(ext, "vue", FILETYPE_VUE)
-
-    FILETYPE_EXT_MACRO(ext, "bat", FILETYPE_BAT)
-    FILETYPE_EXT_MACRO(ext, "ps1", FILETYPE_POWERSHELL)
-    FILETYPE_EXT_MACRO(ext, "md", FILETYPE_MARKDOWN)
-    FILETYPE_EXT_MACRO(ext, "sh", FILETYPE_BASH)
-    FILETYPE_EXT_MACRO(ext, "bash", FILETYPE_BASH)
-  else {
-    return FILETYPE_UNKNOWN;
+static Enum_File_Type LookupExtInTable(const s8* ext) {
+  u32 idx = ComputeExtIndex(ext);
+  while (strncmp(filetype_table[idx].key, ext, MAX_EXT_LENGTH) != 0) {
+    if (filetype_table[idx].value == FILETYPE_UNKNOWN) {
+      return FILETYPE_UNKNOWN;
+    }
+    idx = (idx + 1) % FILETYPE_TABLE_SIZE;
   }
+  return filetype_table[idx].value;
+}
+
+static void BuildExtHashTable() {
+  PutExtInTable("asm", FILETYPE_ASM);
+  PutExtInTable("bash", FILETYPE_BASH);
+  PutExtInTable("bat", FILETYPE_BAT);
+  PutExtInTable("cpp", FILETYPE_CXX_SRC);
+  PutExtInTable("cxx", FILETYPE_CXX_SRC);
+  PutExtInTable("c++", FILETYPE_CXX_SRC);
+  PutExtInTable("cc", FILETYPE_CXX_SRC);
+  PutExtInTable("json", FILETYPE_JSON);
+  PutExtInTable("toml", FILETYPE_TOML);
+  PutExtInTable("properties", FILETYPE_PROPERTIES);
+  PutExtInTable("ini", FILETYPE_INI);
+  PutExtInTable("hpp", FILETYPE_CXX_SRC);
+  PutExtInTable("h", FILETYPE_H_HEADER);
+  PutExtInTable("s", FILETYPE_ASM);
+  PutExtInTable("py", FILETYPE_PYTHON);
+  PutExtInTable("cs", FILETYPE_CSHARP);
+  PutExtInTable("go", FILETYPE_GOLANG);
+  PutExtInTable("rs", FILETYPE_RUST);
+  PutExtInTable("rb", FILETYPE_RUBY);
+  PutExtInTable("swift", FILETYPE_SWIFT);
+  PutExtInTable("gradle", FILETYPE_GRADLE);
+  PutExtInTable("java", FILETYPE_JAVA);
+  PutExtInTable("kt", FILETYPE_KOTLIN);
+  PutExtInTable("kts", FILETYPE_KOTLIN);
+  PutExtInTable("hs", FILETYPE_HASKELL);
+  PutExtInTable("jl", FILETYPE_JULIA);
+  PutExtInTable("js", FILETYPE_JAVASCRIPT);
+  PutExtInTable("ts", FILETYPE_TYPESCRIPT);
+  PutExtInTable("jsx", FILETYPE_JAVASCRIPT);
+  PutExtInTable("tsx", FILETYPE_TYPESCRIPT);
+  PutExtInTable("html", FILETYPE_HTML);
+  PutExtInTable("hbs", FILETYPE_HTML);
+  PutExtInTable("css", FILETYPE_CSS);
+  PutExtInTable("scss", FILETYPE_CSS);
+  PutExtInTable("sass", FILETYPE_CSS);
+  PutExtInTable("less", FILETYPE_CSS);
+  PutExtInTable("svelte", FILETYPE_SVELTE);
+  PutExtInTable("vue", FILETYPE_VUE);
+  PutExtInTable("ps1", FILETYPE_POWERSHELL);
+  PutExtInTable("md", FILETYPE_MARKDOWN);
+  PutExtInTable("sh", FILETYPE_BASH);
+  PutExtInTable("xml", FILETYPE_XML);
+  PutExtInTable("yaml", FILETYPE_YAML);
+  PutExtInTable("yml", FILETYPE_YAML);
+  PutExtInTable("zig", FILETYPE_ZIG);
 }
 
 static const s8* FileTypeToStr(Enum_File_Type file_type) {
@@ -188,7 +189,6 @@ static const s8* FileTypeToStr(Enum_File_Type file_type) {
     FILETYPE_NAME_MACRO(FILETYPE_INI, "INI");
 
     FILETYPE_NAME_MACRO(FILETYPE_H_HEADER, "C/C++ Header");
-    FILETYPE_NAME_MACRO(FILETYPE_HPP_HEADER, "C++ Header");
     FILETYPE_NAME_MACRO(FILETYPE_C_SRC, "C");
     FILETYPE_NAME_MACRO(FILETYPE_CXX_SRC, "C++");
     FILETYPE_NAME_MACRO(FILETYPE_ASM, "ASM");
@@ -326,7 +326,7 @@ static void CreateFileJob(const s8* filename) {
   if (!ext) {
     return;
   }
-  Enum_File_Type type = MapExtToFileType(ext);
+  Enum_File_Type type = LookupExtInTable(ext);
   if (type == FILETYPE_UNKNOWN) {
     return;
   }
@@ -350,6 +350,7 @@ static void WorkerThread(Job_Span jobs) {
 }
 
 s32 main(s32 argc, s8* argv[]) {
+  BuildExtHashTable();
   InitHighResTimer();
   win32_LoadImports();
 
