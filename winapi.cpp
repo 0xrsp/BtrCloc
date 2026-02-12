@@ -41,7 +41,7 @@ void win32_CloseMapped(const win32_Mapped_File* file) {
 
 void win32_WalkDirTree(const s8* dir, File_Cb cb) {
   s8 dir_info_buf[4 * 1024];//4kb
-
+  s32 dir_length;
   FILE_DIRECTORY_INFORMATION info{};
   u32 entry_offset = 0x0;
   HANDLE dhandle = CreateFileA(dir, FILE_LIST_DIRECTORY, FILE_SHARE_WRITE | FILE_SHARE_READ | FILE_SHARE_DELETE,
@@ -59,6 +59,7 @@ void win32_WalkDirTree(const s8* dir, File_Cb cb) {
     goto err_close;
   }
 
+  dir_length = strlen(dir);
   do {
     info = *(FILE_DIRECTORY_INFORMATION*)(dir_info_buf + entry_offset);
     wchar_t* name_p = (wchar_t*)(dir_info_buf + entry_offset + offsetof(FILE_DIRECTORY_INFORMATION, name));
@@ -81,16 +82,18 @@ void win32_WalkDirTree(const s8* dir, File_Cb cb) {
     //s32 length = WideCharToMultiByte(CP_ACP, 0, name_p, wlength, nullptr, 0, nullptr, nullptr);
     s32 length = wlength;
 
-    s8* name = (s8*)malloc(length + 1);
-    length = WideCharToMultiByte(CP_ACP, 0, name_p, wlength, name, length, nullptr, nullptr);
-    name[length] = 0;
-    //printf("%s\n", name);
+    s8* filepath = (s8*)malloc(dir_length + 1 + length + 1);
+    filepath[0] = 0;
+    strcat(filepath, dir);
+    strcat(filepath, "\\");
+    length = WideCharToMultiByte(CP_ACP, 0, name_p, wlength, filepath + dir_length + 1, MAX_PATH, nullptr, nullptr);
+    filepath[dir_length + 1 + length] = 0;
 
     if (info.attribs & FILE_ATTRIBUTE_DIRECTORY) {
-      win32_WalkDirTree(name, cb);
+      win32_WalkDirTree(filepath, cb);
     }
     else {
-      cb(name);
+      cb(filepath);
     }
   } while (info.next_entry_off != 0);
 
