@@ -39,19 +39,19 @@ void win32_CloseMapped(const win32_Mapped_File* file) {
   CloseHandle(file->handle);
 }
 
-void win32_WalkDirTree(const s8* dir, File_Cb cb) {
+void win32_WalkDirTree(s8* dir, File_Cb cb, bool32 recurse) {
   s8 dir_info_buf[4 * 1024];//4kb
   s32 dir_length;
   FILE_DIRECTORY_INFORMATION info{};
   u32 entry_offset = 0x0;
+  IO_STATUS_BLOCK status;
   HANDLE dhandle = CreateFileA(dir, FILE_LIST_DIRECTORY, FILE_SHARE_WRITE | FILE_SHARE_READ | FILE_SHARE_DELETE,
     nullptr, OPEN_EXISTING, FILE_FLAG_BACKUP_SEMANTICS, nullptr);
 
   if (dhandle == INVALID_HANDLE_VALUE) {
-    return;
+    goto err_any;
   }
 
-  IO_STATUS_BLOCK status;
   NtQueryDirectoryFile_imp(dhandle, nullptr, nullptr, nullptr, &status, dir_info_buf, sizeof(dir_info_buf),
     FileDirectoryInformation, 0, nullptr, 1);
 
@@ -83,6 +83,7 @@ void win32_WalkDirTree(const s8* dir, File_Cb cb) {
     s32 length = wlength;
 
     s32 nullpad = 4;
+    // TODO: Pool allocations?
     s8* filepath = (s8*)malloc(dir_length + 1 + length + nullpad);
     filepath[0] = 0;
     strcat(filepath, dir);
@@ -91,7 +92,9 @@ void win32_WalkDirTree(const s8* dir, File_Cb cb) {
     memset(filepath + dir_length + 1 + length, 0, nullpad);
 
     if (info.attribs & FILE_ATTRIBUTE_DIRECTORY) {
-      win32_WalkDirTree(filepath, cb);
+      if (recurse) {
+        win32_WalkDirTree(filepath, cb, 1);
+      }
     }
     else {
       cb(filepath);
@@ -100,6 +103,8 @@ void win32_WalkDirTree(const s8* dir, File_Cb cb) {
 
 err_close:
   CloseHandle(dhandle);
+err_any:
+  free(dir);
 }
 
 void InitHighResTimer() {

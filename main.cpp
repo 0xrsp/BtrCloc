@@ -285,14 +285,14 @@ static bool IsLineBlank(std::string_view line) {
 
 static void FileWorker(Job_Data* job) {
   win32_Mapped_File file{};
+  size_t last_line = 0;
   if (!win32_MapFileForRead(job->filename, &file)) {
-    return;
+    goto err;
   }
 
   // TODO: File is memory mapped there is no 
   // text decoding done
 
-  size_t last_line = 0;
   for (size_t i = 1; i < file.size; ++i) {
     s8 c = file.view[i];
     if (//file.view[i - 1] == '\r' &&
@@ -319,22 +319,32 @@ static void FileWorker(Job_Data* job) {
   LineProcEofCb();
 
   win32_CloseMapped(&file);
+err:
+  free(job->filename);
 }
 
-static void CreateFileJob(const s8* filename) {
+static void CreateFileJob(s8* filename) {
   const s8* ext = GetFileExt(filename);
+  Enum_File_Type type;
+  Job_Data* job;
+
   if (!ext) {
-    return;
-  }
-  Enum_File_Type type = LookupExtInTable(ext);
-  if (type == FILETYPE_UNKNOWN) {
-    return;
+    goto no_ext;
   }
 
-  Job_Data* job = new Job_Data{};
-  job->filename = _strdup(filename);
+  type = LookupExtInTable(ext);
+  if (type == FILETYPE_UNKNOWN) {
+    goto no_ext;
+  }
+
+  job = new Job_Data{};
+  job->filename = filename;
   job->type = type;
   jobs.push_back(job);
+  return;
+
+no_ext:
+  free(filename);
 }
 
 static void MergeResult(File_Result* dest, File_Result x) {
@@ -358,7 +368,8 @@ s32 main(s32 argc, s8* argv[]) {
   //NOTE: Debug arg
   //args.directory = ".";
 
-  win32_WalkDirTree(args.directory, CreateFileJob);
+  s8* dir = _strdup(args.directory);
+  win32_WalkDirTree(dir, CreateFileJob, !args.no_recurse);
 
   Job_Span* spans = new Job_Span[args.threads];
   DivideJobs(spans, args.threads);
