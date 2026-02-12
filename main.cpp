@@ -113,7 +113,7 @@ static bool IsTableEntryEqual(u32 idx, const s8* ext) {
 static void PutExtInTable(const s8* ext, Enum_File_Type filetype) {
   u32 idx = ComputeExtIndex(ext);
   while (filetype_table[idx].value != FILETYPE_UNKNOWN) {
-    if (IsTableEntryEqual(idx, key)) {
+    if (IsTableEntryEqual(idx, ext)) {
       assert(0 && "Ext table already contains entry");
       return;
     }
@@ -365,7 +365,6 @@ static void WorkerThread(Job_Span jobs) {
 
 s32 main(s32 argc, s8* argv[]) {
   BuildExtHashTable();
-  InitHighResTimer();
   win32_LoadImports();
 
   ParseArgs(&args, argc, argv);
