@@ -106,10 +106,14 @@ static u32 ComputeExtIndex(const s8* ext) {
   return fmix32(hash) % FILETYPE_TABLE_SIZE;
 }
 
+static bool IsTableEntryEqual(u32 idx, const s8* ext) {
+  return strncmp(filetype_table[idx].key, ext, MAX_EXT_LENGTH) == 0;
+}
+
 static void PutExtInTable(const s8* ext, Enum_File_Type filetype) {
   u32 idx = ComputeExtIndex(ext);
   while (filetype_table[idx].value != FILETYPE_UNKNOWN) {
-    if (strncmp(filetype_table[idx].key, ext, MAX_EXT_LENGTH) == 0) {
+    if (IsTableEntryEqual(idx, key)) {
       assert(0 && "Ext table already contains entry");
       return;
     }
@@ -122,7 +126,7 @@ static void PutExtInTable(const s8* ext, Enum_File_Type filetype) {
 
 static Enum_File_Type LookupExtInTable(const s8* ext) {
   u32 idx = ComputeExtIndex(ext);
-  while (strncmp(filetype_table[idx].key, ext, MAX_EXT_LENGTH) != 0) {
+  while (!IsTableEntryEqual(idx, ext)) {
     if (filetype_table[idx].value == FILETYPE_UNKNOWN) {
       return FILETYPE_UNKNOWN;
     }
