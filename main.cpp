@@ -58,7 +58,7 @@ enum Enum_File_Type : s32 {
   case t: \
     return (n)
 
-typedef bool(*Line_Proc)(std::string_view);
+typedef bool32(*Line_Proc)(std::string_view);
 
 #include "lineprocs.cpp"
 
@@ -71,6 +71,8 @@ static Line_Proc LookupLineProc(Enum_File_Type filetype) {
   case FILETYPE_JAVA:
   case FILETYPE_CSHARP:
     return CstyleLineProc;
+  case FILETYPE_BAT:
+    return BatLineProc;
   default:
     return nullptr;
   }
@@ -226,9 +228,11 @@ static const s8* FileTypeToStr(Enum_File_Type file_type) {
 }
 
 struct File_Result {
+  Enum_File_Type type;
   s32 code = 0;
   s32 blank = 0;
   s32 comment = 0;
+  s32 files = 0;
 };
 
 struct Job_Data {
@@ -272,19 +276,6 @@ static const s8* GetFileExt(const s8* filename) {
   }
 
   return nullptr;
-}
-
-static bool IsWhitespace(s8 c) {
-  return c == ' ' || c == '\t' || c == '\r' || c == '\n' || c == '\f' || c == '\v';
-}
-
-static bool IsLineBlank(std::string_view line) {
-  for (s8 c : line) {
-    if (!IsWhitespace(c)) {
-      return 0;
-    }
-  }
-  return 1;
 }
 
 static void FileWorker(Job_Data* job) {
@@ -355,6 +346,11 @@ static void MergeResult(File_Result* dest, File_Result x) {
   dest->code += x.code;
   dest->blank += x.blank;
   dest->comment += x.comment;
+  dest->files += x.files;
+}
+
+static bool32 IsResultPresent(File_Result result) {
+  return result.blank + result.files + result.comment + result.code > 0;
 }
 
 static void WorkerThread(Job_Span jobs) {
@@ -387,29 +383,34 @@ s32 main(s32 argc, s8* argv[]) {
   //delete[] spans;
 
   File_Result results[FILETYPES_COUNT];
-  s32 file_counts[FILETYPES_COUNT] = {};
   for (Job_Data* job : jobs) {
     MergeResult(&results[job->type], job->result);
-    file_counts[job->type]++;
+    results[job->type].files++;
   }
+
+  for (s32 typei = FILETYPE_UNKNOWN; typei < FILETYPES_COUNT; ++typei) {
+    results[typei].type = (Enum_File_Type)typei;
+  }
+
+  std::sort(results, results + FILETYPES_COUNT, [](const File_Result& r1, const File_Result& r2) {
+    return r1.code > r2.code ? 1 : 0;
+    });
 
   // TODO: Cleanup printing logic
   printf("Type\t\tCode\tBlank\tComment\tFiles\n");
+  printf("---------------------------------------------\n");
   File_Result sum{};
-  s32 total_files = 0;
-  for (s32 typei = FILETYPE_UNKNOWN + 1; typei < FILETYPES_COUNT; ++typei) {
+  for (s32 typei = FILETYPE_UNKNOWN; typei < FILETYPES_COUNT; ++typei) {
     File_Result result = results[typei];
-    if (result.blank + result.code + result.comment > 0) {
+    if (IsResultPresent(result)) {
       MergeResult(&sum, result);
-      total_files += file_counts[typei];
-      Enum_File_Type type = (Enum_File_Type)typei;
-      const s8* str = FileTypeToStr(type);
+      const s8* str = FileTypeToStr(result.type);
       s32 tabs = 16 - strlen(str);
-      printf("%s%*s%d\t%d\t%d\t%d\n", str, tabs, "", result.code, result.blank, result.comment, file_counts[type]);
+      printf("%s%*s%d\t%d\t%d\t%d\n", str, tabs, "", result.code, result.blank, result.comment, result.files);
     }
   }
   printf("---------------------------------------------\n");
-  printf("SUM\t\t%d\t%d\t%d\t%d", sum.code, sum.blank, sum.comment, total_files);
+  printf("SUM\t\t%d\t%d\t%d\t%d", sum.code, sum.blank, sum.comment, sum.files);
 
   return 0;
 }

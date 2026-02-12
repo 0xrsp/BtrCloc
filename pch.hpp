@@ -12,6 +12,7 @@
 #include <vector>
 #include <thread>
 #include <string_view>
+#include <algorithm>
 
 typedef char s8;
 typedef short s16;
