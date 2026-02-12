@@ -372,26 +372,30 @@ s32 main(s32 argc, s8* argv[]) {
   }
   //delete[] spans;
 
-  File_Result results[FILETYPES_COUNT] = {};
+  File_Result results[FILETYPES_COUNT];
+  s32 file_counts[FILETYPES_COUNT] = {};
   for (Job_Data* job : jobs) {
     MergeResult(&results[job->type], job->result);
+    file_counts[job->type]++;
   }
 
   // TODO: Cleanup printing logic
-  printf("Type\t\tCode\tBlank\tComment\n");
+  printf("Type\t\tCode\tBlank\tComment\tFiles\n");
   File_Result sum{};
+  s32 total_files = 0;
   for (s32 typei = FILETYPE_UNKNOWN + 1; typei < FILETYPES_COUNT; ++typei) {
     File_Result result = results[typei];
     if (result.blank + result.code + result.comment > 0) {
       MergeResult(&sum, result);
+      total_files += file_counts[typei];
       Enum_File_Type type = (Enum_File_Type)typei;
       const s8* str = FileTypeToStr(type);
       s32 tabs = 16 - strlen(str);
-      printf("%s%*s%d\t%d\t%d\n", str, tabs, "", result.code, result.blank, result.comment);
+      printf("%s%*s%d\t%d\t%d\t%d\n", str, tabs, "", result.code, result.blank, result.comment, file_counts[type]);
     }
   }
-  printf("---------------------------------------\n");
-  printf("SUM\t\t%d\t%d\t%d", sum.code, sum.blank, sum.comment);
+  printf("---------------------------------------------\n");
+  printf("SUM\t\t%d\t%d\t%d\t%d", sum.code, sum.blank, sum.comment, total_files);
 
   return 0;
 }
